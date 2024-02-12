@@ -2,23 +2,36 @@
 # This script performs a backup of the specified directories from the source drive to the backup drives.
 # By Sébastien ETCHETO
 
+default_config_file="$HOME/.backup/backup-hdd.config"
+
+usage() {
+    cat <<EOF
+    Usage: $0 [-c <config_file>]
+    Options:
+      -c, --config <config_file>   Specify the configuration file to use (default: $default_config_file)
+EOF
+
+    exit 1
+}
+
 # Configuration file
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
-        -c|--config)
-            config_file="$2"
-            shift
-            shift
-            ;;
-        *)
-            echo "Unknown option: $key"
-            exit 1
-            ;;
+    -c | --config)
+        config_file="$2"
+        shift
+        shift
+        ;;
+    *)
+        echo "Unknown option: $key"
+        usage
+        exit 1
+        ;;
     esac
 done
 
-config_file="${config_file:-$HOME/.backup/backup-hdd.config}"
+config_file="${config_file:-$default_config_file}"
 
 if [ ! -f "$config_file" ]; then
     echo "The configuration file '$config_file' doesn't exist."
@@ -26,7 +39,10 @@ if [ ! -f "$config_file" ]; then
 fi
 
 # Load and check the configuration file
-source "$config_file" || { echo "Failed to load configuration file '$config_file'."; exit 1; }
+source "$config_file" || {
+    echo "Failed to load configuration file '$config_file'."
+    exit 1
+}
 
 if [ -z "$source_dir" ] || [ -z "$backup_dir1" ] || [ -z "$backup_dir2" ]; then
     echo "The paths of the hard drives are not defined in the configuration file."
@@ -54,7 +70,7 @@ if [ "$source_dir" = "$backup_dir1" ] || [ "$source_dir" = "$backup_dir2" ]; the
 fi
 
 # Paths confirmation
-cat << EOF
+cat <<EOF
 The following paths will be used for the backup:
 
 Source drive: $source_dir
@@ -70,7 +86,7 @@ EOF
 read -p "Do you confirm that the above paths are correct? (Y/N) " confirm_paths
 
 if [[ "$confirm_paths" != [yY] ]]; then
-    echo "Backup canceled."
+    echo "Backup canceled"
     exit 0
 fi
 
@@ -79,7 +95,7 @@ perform_backup() {
     local source_dir="$1"
     local backup_dir="$2"
     local folders_to_backup="$3"
-    
+
     if [ ! -d "$source_dir" ]; then
         echo "The source directory '$source_dir' doesn't exist. Please verify the specified path."
         exit 1
@@ -91,7 +107,12 @@ perform_backup() {
     fi
 
     for folder in $folders_to_backup; do
-        echo "Backing up '$folder' from '$source_dir' to '$backup_dir'"
+        if [ ! -d "$source_dir/$folder" ]; then
+            echo "The directory '$source_dir/$folder' doesn't exist. Please verify the specified path."
+            continue
+        fi
+
+        echo "Synchronizing files from '$source_dir/$folder' to '$backup_dir/$folder'"
         rsync -avz --delete "$source_dir/$folder" "$backup_dir/"
     done
 }
@@ -102,5 +123,3 @@ perform_backup "$source_dir" "$backup_dir2" "$folders_to_backup2"
 
 echo "Backup completed on the secondary drives."
 exit 0
-
-
