@@ -10,7 +10,12 @@ usage() {
     Options:
       -c, --config <config_file>   Specify the configuration file to use (default: $default_config_file)
 EOF
+    exit 1
+}
 
+cleanup() {
+    pkill -TERM rsync
+    echo "Backup process interrupted"
     exit 1
 }
 
@@ -69,6 +74,8 @@ if [ "$source_dir" = "$backup_dir1" ] || [ "$source_dir" = "$backup_dir2" ]; the
     exit 1
 fi
 
+trap cleanup SIGINT SIGTERM
+
 # Paths confirmation
 cat <<EOF
 The following paths will be used for the backup:
@@ -113,7 +120,7 @@ perform_backup() {
         fi
 
         echo "Synchronizing files from '$source_dir/$folder' to '$backup_dir/$folder'"
-        rsync -avz --delete "$source_dir/$folder" "$backup_dir/"
+        rsync -avz --delete --progress "$source_dir/$folder" "$backup_dir/"
     done
 }
 
