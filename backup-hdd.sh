@@ -5,9 +5,11 @@ default_config_file="$HOME/.backup/backup-hdd.config"
 usage() {
     cat <<EOF
 This script performs a backup of the specified directories from the source drive to the backup drives.
-Usage: $0 [-c <config_file>]
+Usage: $0 [-c <config_file>] [-d <drive>]
 Options:
     -c, --config <config_file>   Specify the configuration file to use (default: $default_config_file)
+    -d, --drive <drive>          Specify the drive to backup: 1 (Backup drive 1), 2 (Backup drive 2), both (Backup drive 1 and 2) (default: both)
+    -h, --help                   Display help message
 EOF
     exit 1
 }
@@ -18,6 +20,11 @@ while [[ $# -gt 0 ]]; do
     case $key in
     -c | --config)
         config_file="$2"
+        shift
+        shift
+        ;;
+    -d | --drive)
+        drive="$2"
         shift
         shift
         ;;
@@ -32,6 +39,16 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+# Validate drive option
+if [ -z "$drive" ]; then
+    drive="both"
+fi
+
+if [ "$drive" != "1" ] && [ "$drive" != "2" ] && [ "$drive" != "both" ]; then
+    echo "Invalid drive option. Please specify '1', '2' or 'both'."
+    exit 1
+fi
 
 # Load configuration file
 config_file="${config_file:-$default_config_file}"
@@ -52,18 +69,22 @@ validate_paths() {
     local name=$2
 
     if [ -z "$path" ]; then
-        echo "The $name directory is not defined in the configuration file."
+        echo "$name directory is not defined in the configuration file."
         exit 1
     fi
     if [ ! -d "$path" ]; then
-        echo "'$name' directory '$path' doesn't exist. Please verify the specified path."
+        echo "$name directory '$path' doesn't exist. Please verify the specified path."
         exit 1
     fi
 }
 
 validate_paths "$source_dir" "Source drive"
-validate_paths "$backup_dir1" "Backup drive 1"
-validate_paths "$backup_dir2" "Backup drive 2"
+if [ "$drive" = "1" ] || [ "$drive" = "both" ]; then
+    validate_paths "$backup_dir1" "Backup drive 1"
+fi
+if [ "$drive" = "2" ] || [ "$drive" = "both" ]; then
+    validate_paths "$backup_dir2" "Backup drive 2"
+fi
 
 if [ "$source_dir" = "$backup_dir1" ] || [ "$source_dir" = "$backup_dir2" ]; then
     echo "Backup directories cannot be the same as the source directory."
@@ -87,15 +108,25 @@ The following paths will be used for the backup:
 Source drive: 
     path: $source_dir
 
+EOF
+
+    if [ "$drive" = "1" ] || [ "$drive" = "both" ]; then
+        cat <<EOF
 Backup drive 1: 
     path: $backup_dir1
     directories to backup: $folders_to_backup1
 
+EOF
+    fi
+
+    if [ "$drive" = "2" ] || [ "$drive" = "both" ]; then
+        cat <<EOF
 Backup drive 2: 
     path: $backup_dir2
     directories to backup: $folders_to_backup2
 
 EOF
+    fi
 }
 
 confirm_paths() {
@@ -136,8 +167,12 @@ perform_backup() {
     done
 }
 
-perform_backup "$source_dir" "$backup_dir1" "$folders_to_backup1"
-perform_backup "$source_dir" "$backup_dir2" "$folders_to_backup2"
+if [ "$drive" = "1" ] || [ "$drive" = "both" ]; then
+    perform_backup "$source_dir" "$backup_dir1" "$folders_to_backup1"
+fi
+if [ "$drive" = "2" ] || [ "$drive" = "both" ]; then
+    perform_backup "$source_dir" "$backup_dir2" "$folders_to_backup2"
+fi
 
 echo "Backup completed on the secondary drives."
 exit 0
