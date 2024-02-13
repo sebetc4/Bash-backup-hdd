@@ -1,25 +1,18 @@
 #!/bin/bash
-# This script performs a backup of the specified directories from the source drive to the backup drives.
-# By Sébastien ETCHETO
 
 default_config_file="$HOME/.backup/backup-hdd.config"
 
 usage() {
     cat <<EOF
-    Usage: $0 [-c <config_file>]
-    Options:
-      -c, --config <config_file>   Specify the configuration file to use (default: $default_config_file)
+This script performs a backup of the specified directories from the source drive to the backup drives.
+Usage: $0 [-c <config_file>]
+Options:
+    -c, --config <config_file>   Specify the configuration file to use (default: $default_config_file)
 EOF
     exit 1
 }
 
-cleanup() {
-    pkill -TERM rsync
-    echo "Backup process interrupted"
-    exit 1
-}
-
-# Configuration file
+# Parse command-line options
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -27,6 +20,10 @@ while [[ $# -gt 0 ]]; do
         config_file="$2"
         shift
         shift
+        ;;
+    -h | --help)
+        usage
+        exit 0
         ;;
     *)
         echo "Unknown option: $key"
@@ -36,6 +33,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# Load configuration file
 config_file="${config_file:-$default_config_file}"
 
 if [ ! -f "$config_file" ]; then
@@ -43,61 +41,75 @@ if [ ! -f "$config_file" ]; then
     exit 1
 fi
 
-# Load and check the configuration file
 source "$config_file" || {
     echo "Failed to load configuration file '$config_file'."
     exit 1
 }
 
-if [ -z "$source_dir" ] || [ -z "$backup_dir1" ] || [ -z "$backup_dir2" ]; then
-    echo "The paths of the hard drives are not defined in the configuration file."
-    exit 1
-fi
+# Validate paths
+validate_paths() {
+    local path=$1
+    local name=$2
 
-if [ ! -d "$source_dir" ]; then
-    echo "The source directory '$source_dir' doesn't exist. Please verify the specified path."
-    exit 1
-fi
+    if [ -z "$path" ]; then
+        echo "The $name directory is not defined in the configuration file."
+        exit 1
+    fi
+    if [ ! -d "$path" ]; then
+        echo "'$name' directory '$path' doesn't exist. Please verify the specified path."
+        exit 1
+    fi
+}
 
-if [ ! -d "$backup_dir1" ]; then
-    echo "Backup directory 1 '$backup_dir1' does not exist. Please verify the specified path."
-    exit 1
-fi
-
-if [ ! -d "$backup_dir2" ]; then
-    echo "Backup directory 2 '$backup_dir2' does not exist. Please verify the specified path."
-    exit 1
-fi
+validate_paths "$source_dir" "Source drive"
+validate_paths "$backup_dir1" "Backup drive 1"
+validate_paths "$backup_dir2" "Backup drive 2"
 
 if [ "$source_dir" = "$backup_dir1" ] || [ "$source_dir" = "$backup_dir2" ]; then
     echo "Backup directories cannot be the same as the source directory."
     exit 1
 fi
 
+# Cleanup and exit on interrupt signal
+cleanup() {
+    pkill -TERM rsync
+    echo "Backup process interrupted"
+    exit 1
+}
+
 trap cleanup SIGINT SIGTERM
 
-# Paths confirmation
-cat <<EOF
+# Print and confirm paths
+print_paths_confirmation() {
+    cat <<EOF
 The following paths will be used for the backup:
 
-Source drive: $source_dir
+Source drive: 
+    path: $source_dir
 
-Backup drive 1: $backup_dir1
-Directories to backup on backup drive 1: $folders_to_backup1
+Backup drive 1: 
+    path: $backup_dir1
+    directories to backup: $folders_to_backup1
 
-Backup drive 2: $backup_dir2
-Directories to backup on backup drive 2: $folders_to_backup2
+Backup drive 2: 
+    path: $backup_dir2
+    directories to backup: $folders_to_backup2
 
 EOF
+}
 
-read -p "Do you confirm that the above paths are correct? (Y/N) " confirm_paths
+confirm_paths() {
+    read -p "Do you confirm that the above paths are correct? (Y/N) " confirm
+    if [[ "$confirm" != [yY] ]]; then
+        echo "Backup canceled"
+        exit 0
+    fi
+}
 
-if [[ "$confirm_paths" != [yY] ]]; then
-    echo "Backup canceled"
-    exit 0
-fi
+print_paths_confirmation
+confirm_paths
 
-# Function to perform backup for a directory
+# Perform backup for directories
 perform_backup() {
     local source_dir="$1"
     local backup_dir="$2"
@@ -124,7 +136,6 @@ perform_backup() {
     done
 }
 
-# Perform backup for each specified directory
 perform_backup "$source_dir" "$backup_dir1" "$folders_to_backup1"
 perform_backup "$source_dir" "$backup_dir2" "$folders_to_backup2"
 
