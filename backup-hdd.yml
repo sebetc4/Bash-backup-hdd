@@ -1,0 +1,11 @@
+source:
+    dir: path_to_source_drive
+backup_drive_1:
+    dir: path_to_backup_drive_1
+    folders:
+        - directory1
+backup_drive_2:
+    dir: path_to_backup_drive_2
+    folders:
+        - directory2
+        - directory3

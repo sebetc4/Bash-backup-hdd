@@ -1,20 +1,24 @@
 #!/bin/bash
 
-default_config_file="$HOME/.backup/backup-hdd.config"
+default_config_file="$HOME/.backup/backup-hdd.yml"
 
 usage() {
     cat <<EOF
 This script performs a backup of the specified directories from the source drive to the backup drives.
-Usage: $0 [-c <config_file>] [-d <drive>]
+Usage: $0 [-c <config_file>] [-d <drive>] [--no-delete] [--no-progress]
 Options:
     -c, --config <config_file>   Specify the configuration file to use (default: $default_config_file)
     -d, --drive <drive>          Specify the drive to backup: 1 (Backup drive 1), 2 (Backup drive 2), both (Backup drive 1 and 2) (default: both)
+    --no-delete                  Do not delete files in the destination that are not in the source
+    --no-progress                Do not show progress during file transfer
     -h, --help                   Display help message
 EOF
     exit 1
 }
 
-# Parse command-line options
+# Parse command line options
+no_delete=false
+no_progress=false
 while [[ $# -gt 0 ]]; do
     key="$1"
     case $key in
@@ -28,6 +32,14 @@ while [[ $# -gt 0 ]]; do
         shift
         shift
         ;;
+    --no-delete)
+        no_delete=true
+        shift
+        ;;
+    --no-progress)
+        no_progress=true
+        shift
+        ;;
     -h | --help)
         usage
         exit 0
@@ -39,6 +51,11 @@ while [[ $# -gt 0 ]]; do
         ;;
     esac
 done
+
+if ! command -v yq &> /dev/null; then
+    echo "yq could not be found. Please install yq to use this script."
+    exit 1
+fi
 
 # Validate drive option
 if [ -z "$drive" ]; then
@@ -58,12 +75,12 @@ if [ ! -f "$config_file" ]; then
     exit 1
 fi
 
-source "$config_file" || {
-    echo "Failed to load configuration file '$config_file'."
-    exit 1
-}
+source_dir=$(yq e '.source.dir' "$config_file")
+backup_dir1=$(yq e '.backup_drive_1.dir' "$config_file")
+backup_dir2=$(yq e '.backup_drive_2.dir' "$config_file")
+folders_to_backup1=$(yq e '.backup_drive_1.folders[]' "$config_file" | tr '\n' ' ')
+folders_to_backup2=$(yq e '.backup_drive_2.folders[]' "$config_file" | tr '\n' ' ')
 
-# Validate paths
 validate_paths() {
     local path=$1
     local name=$2
@@ -91,7 +108,6 @@ if [ "$source_dir" = "$backup_dir1" ] || [ "$source_dir" = "$backup_dir2" ]; the
     exit 1
 fi
 
-# Cleanup and exit on interrupt signal
 cleanup() {
     pkill -TERM rsync
     echo "Backup process interrupted"
@@ -100,7 +116,6 @@ cleanup() {
 
 trap cleanup SIGINT SIGTERM
 
-# Print and confirm paths
 print_paths_confirmation() {
     cat <<EOF
 The following paths will be used for the backup:
@@ -127,6 +142,13 @@ Backup drive 2:
 
 EOF
     fi
+
+    if [ "$no_delete" = false ];then
+        cat <<EOF
+Warning: Files in the destination directories that are not present in the source will be deleted.
+
+EOF
+    fi
 }
 
 confirm_paths() {
@@ -140,7 +162,6 @@ confirm_paths() {
 print_paths_confirmation
 confirm_paths
 
-# Perform backup for directories
 perform_backup() {
     local source_dir="$1"
     local backup_dir="$2"
@@ -156,6 +177,14 @@ perform_backup() {
         exit 1
     fi
 
+    rsync_options="-avz"
+    if [ "$no_delete" = false ]; then
+        rsync_options="$rsync_options --delete"
+    fi
+    if [ "$no_progress" = false ]; then
+        rsync_options="$rsync_options --progress"
+    fi
+
     for folder in $folders_to_backup; do
         if [ ! -d "$source_dir/$folder" ]; then
             echo "The directory '$source_dir/$folder' doesn't exist. Please verify the specified path."
@@ -163,7 +192,7 @@ perform_backup() {
         fi
 
         echo "Synchronizing files from '$source_dir/$folder' to '$backup_dir/$folder'"
-        rsync -avz --delete --progress "$source_dir/$folder" "$backup_dir/"
+        rsync $rsync_options "$source_dir/$folder" "$backup_dir/"
     done
 }
 
